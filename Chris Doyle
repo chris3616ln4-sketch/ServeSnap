@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ServeSnap</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,Arial;background:#f3f5f9;color:#172033}
+header{background:#132d50;color:white;padding:18px}
+header h1{margin:0;font-size:25px}
+header small{color:#c9d9ee}
+nav{display:flex;background:white;border-bottom:1px solid #ddd}
+nav button{flex:1;border:0;background:white;padding:15px 5px;font-weight:700;color:#53647c}
+nav button.active{color:#1466d8;border-bottom:3px solid #1466d8}
+main{padding:15px;max-width:800px;margin:auto}
+.card{background:white;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 2px 8px #17203310}
+h2{margin:0 0 14px;font-size:21px}
+input,select{width:100%;padding:12px;margin:7px 0 13px;border:1px solid #ccd3df;border-radius:9px;font-size:16px}
+button{cursor:pointer}
+.primary{background:#1466d8;color:white;border:0;border-radius:9px;padding:13px 17px;font-weight:700}
+.menu{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.item{background:#f2f6fc;border:1px solid #dce5f3;border-radius:10px;padding:13px;text-align:left}
+.item strong{display:block}
+.item span{color:#53647c;font-size:13px}
+.line{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid #eee}
+.muted{color:#66758b}
+.tag{display:inline-block;background:#e8f0ff;color:#1455a5;padding:5px 9px;border-radius:7px;font-size:12px}
+.hidden{display:none}
+.full{width:100%}
+</style>
+</head>
+<body>
+<header><h1>ServeSnap</h1><small>Restaurant ordering system · Demo mode</small></header>
+<nav>
+<button id="tab-staff" class="active" onclick="show('staff')">Staff</button>
+<button id="tab-kitchen" onclick="show('kitchen')">Kitchen</button>
+<button id="tab-bar" onclick="show('bar')">Bar</button>
+</nav>
+<main>
+<section id="staff">
+<div class="card">
+<h2>New order</h2>
+<label>Order type</label>
+<select id="type" onchange="changeType()">
+<option value="Table">Table service</option>
+<option value="Takeaway">Takeaway</option>
+</select>
+<label id="refLabel">Table number</label>
+<input id="ref" placeholder="e.g. 12">
+<h2>Menu</h2>
+<div id="menu" class="menu"></div>
+</div>
+<div class="card">
+<h2>Current order</h2>
+<div id="basket"></div>
+<p id="total"><strong>Total: £0.00</strong></p>
+<button class="primary full" onclick="sendOrder()">Send order</button>
+</div>
+</section>
+<section id="kitchen" class="hidden">
+<div class="card"><h2>Kitchen orders</h2><div id="kitchenOrders"></div></div>
+</section>
+<section id="bar" class="hidden">
+<div class="card"><h2>Bar orders</h2><div id="barOrders"></div></div>
+</section>
+</main>
+<script>
+const menu=[
+{name:"Burger",price:8.5,dept:"kitchen"},
+{name:"Fish & Chips",price:10.5,dept:"kitchen"},
+{name:"Pizza",price:9,dept:"kitchen"},
+{name:"Chips",price:3,dept:"kitchen"},
+{name:"Cola",price:2.5,dept:"bar"},
+{name:"Lemonade",price:2.5,dept:"bar"},
+{name:"Tea",price:2,dept:"bar"},
+{name:"Coffee",price:3,dept:"bar"}
+];
+let basket=[];
+let orders=[];
+try{orders=JSON.parse(localStorage.getItem("servesnap-orders")||"[]")}catch(e){orders=[]}
+const money=n=>"£"+n.toFixed(2);
+function save(){localStorage.setItem("servesnap-orders",JSON.stringify(orders))}
+function show(tab){
+["staff","kitchen","bar"].forEach(t=>{
+document.getElementById(t).classList.toggle("hidden",t!==tab);
+document.getElementById("tab-"+t).classList.toggle("active",t===tab)
+});
+renderOrders()
+}
+function changeType(){
+const takeaway=document.getElementById("type").value==="Takeaway";
+document.getElementById("refLabel").textContent=takeaway?"Customer name or reference":"Table number";
+document.getElementById("ref").placeholder=takeaway?"e.g. Alex":"e.g. 12"
+}
+function addItem(i){basket.push({...menu[i]});renderBasket()}
+function removeItem(i){basket.splice(i,1);renderBasket()}
+function renderBasket(){
+document.getElementById("basket").innerHTML=basket.length?
+basket.map((x,i)=>'<div class="line"><span>'+x.name+'</span><span>'+money(x.price)+' <button onclick="removeItem('+i+')">Remove</button></span></div>').join(""):
+'<p class="muted">No items added yet.</p>';
+document.getElementById("total").textContent="Total: "+money(basket.reduce((s,x)=>s+x.price,0))
+}
+function sendOrder(){
+const ref=document.getElementById("ref").value.trim();
+if(!ref){alert("Enter a table number or takeaway reference.");return}
+if(!basket.length){alert("Add at least one item.");return}
+orders.unshift({
+id:Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,7),
+type:document.getElementById("type").value,
+ref:ref,
+items:basket.map(x=>({...x,status:"New"})),
+created:new Date().toLocaleTimeString()
+});
+save();basket=[];document.getElementById("ref").value="";
+renderBasket();renderOrders();alert("Order sent!")
+}
+function update(id,dept,status){
+const order=orders.find(x=>x.id===id);
+if(!order)return;
+order.items.filter(x=>x.dept===dept).forEach(x=>x.status=status);
+save();renderOrders()
+}
+function renderDept(dept){
+const el=document.getElementById(dept+"Orders");
+const relevant=orders.filter(o=>o.items.some(x=>x.dept===dept));
+if(!relevant.length){el.innerHTML='<p class="muted">No orders yet.</p>';return}
+el.innerHTML=relevant.map(o=>{
+const items=o.items.filter(x=>x.dept===dept);
+const statuses=[...new Set(items.map(x=>x.status))];
+const status=statuses.length===1?statuses[0]:"Mixed";
+return '<div class="card" style="border:1px solid #e2e7ef">'+
+'<div class="line"><strong>'+o.type+' '+escapeText(o.ref)+'</strong><span class="tag">'+status+'</span></div>'+
+'<small class="muted">'+o.created+'</small>'+
+items.map(x=>'<div class="line"><span>'+x.name+'</span><span>'+x.status+'</span></div>').join("")+
+'<div style="display:flex;gap:8px;margin-top:12px">'+
+'<button class="primary" onclick="update(\''+o.id+'\',\''+dept+'\',\'Preparing\')">Preparing</button>'+
+'<button class="primary" onclick="update(\''+o.id+'\',\''+dept+'\',\'Ready\')">Ready</button></div></div>'
+}).join("")
+}
+function escapeText(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function renderOrders(){renderDept("kitchen");renderDept("bar")}
+document.getElementById("menu").innerHTML=menu.map((x,i)=>
+'<button class="item" onclick="addItem('+i+')"><strong>'+x.name+'</strong><span>'+money(x.price)+' · '+x.dept+'</span></button>'
+).join("");
+renderBasket();renderOrders()
+</script>
+</body>
+</html>
